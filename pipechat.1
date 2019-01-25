@@ -1,0 +1,212 @@
+.Dd $Mdocdate$
+.Dt pipechat 1
+.Os
+.Sh NAME
+.Nm pipechat
+.Nd small, simple and serverless chat system
+.Sh SYNOPSIS
+.Nm pipechat
+.Ar chatdir
+.Op Ar group
+.Sh DESCRIPTION
+The
+.Nm
+program allows multiple users sharing same user group
+on single trusted host to exchange chat messages among 
+themselves, without the need to run arbitrary
+chat server software.
+.Pp
+Communication happens through filesystem only.
+.Pp
+Chatroom is implemented as so called  
+.Sy chatdir
+and is semi-persistent.
+.Pp
+Chatroom access is controlled by filesystem 
+permissions.
+.Pp
+The arguments are as follows:
+.Bl -tag -width Ds
+.It Ar chatdir
+directory in filesystem where \(dqchatroom\(dq
+will reside/resides.
+.It Ar group
+Primary (or auxiliary) user group
+that should own the
+.Ar chatdir Ns .
+Resulting 
+.Sy chatdir 
+will have appropriate ownership information 
+and permision bits set, thus access to 
+chatroom will be allowed to users belonging 
+into that user group.
+.El
+.Pp
+Builtin commands can be seen by typing
+.Ic /help
+while in
+.Nm Ns .
+.Sh IMPLEMENTATION NOTES
+.Nm 
+uses so called 
+.Sy fifodir
+system to broadcast chatroom
+change events. To learn more about 
+.Sy fifodir Ns s
+visit https://skarnet.org/software/s6/fifodir.html.
+.Sh ENVIRONMENT
+User's nickname is autodetected by evaluating several possible sources 
+in following order:
+.Bl -tag -width Sh
+.It Ev SUDO_USER
+If this environmental variable, usually set by
+.Xr sudo 8 Ns ,
+is found, it is used first.
+.It Ev LOGNAME
+Otherwise username set by
+.Xr login 1
+is used.
+.It Ev USER
+Finally, if only this variable is set,
+.Nm
+will use it to determine the user's nick.
+.It Ev EUID
+In case no match with environment variables listed 
+above is found,
+.Nm
+will use username of effective user of it's own process,
+but only, and only if EUID is not that of root/superuser, 
+eg. 0.
+.It Ev RUID
+In cases where EUID == 0 (superuser), 
+name of process' real user is used.
+.El
+.Pp
+First found matching source "wins" the nickname selection.
+.Sh FILES
+.Bl -tag -width $chadir/event/$pid -compact
+.It Pa $chatdir
+chatroom, also known as \(dqchatdir\(dq. It can be created 
+at any arbitrary location of filesystem hierarchy, 
+but preferably, it should be created either in 
+.Pa /tmp
+or on
+.Xr tmpfs 5
+filesystems only.
+.It Pa $chatdir/event
+\(dqclient\(dq's event notification 
+.Sy fifodir Ns .
+.It Pa $chatdir/event/$pid
+event notification pipe of 
+.Nm
+client process with PID
+.Ar $pid Ns .
+.It Pa $chatdir/log
+Actual chatlog of 
+.Nm
+chatroom.
+.El
+.Sh EXIT	STATUS
+.Ex -std
+.Sh EXAMPLES
+Join/create single user chatroom at 
+.Pa /tmp/chatroom
+chatdir:
+.Pp
+.Dl $ pipechat /tmp/chatroom
+.Pp
+Single user chatroom has limited use only.
+Usually it can be used to exchange tidbits 
+of information between multiple 
+.Xr tmux 1
+instances. 
+.Pp
+Multiuser chatrooms are much more 
+useful, as they allow multiple users to 
+coordinate work together.
+.Pp
+As user
+.Ar petra Ns ,
+create (and join) multiuser chatroom at
+.Pa /run/chatrooms/gossips 
+allowing access for all users in group 
+.Ar secretaries Ns :
+.Pp
+.Dl petra$ pipechat /run/chatrooms/gossips secretaries
+.Pp
+Then, as 
+.Ar sandra Ns , 
+member of 
+.Ar secretaries
+group as well, join 
+.Pa /run/chatrooms/gossips 
+too:
+.Pp
+.Dl sandra$ pipechat /run/chatrooms/gossips
+.Pp
+Now both,
+.Ar petra
+and
+.Ar sandra Ns ,
+can gossip about aspies among IT personnel.
+.Sh SEE ALSO
+.Xr minitalk 1 Ns ,
+.Xr login 1 Ns ,
+.Xr sudo 8 Ns ,
+.Xr tmux 1
+.Sh HISTORY
+.Nm 
+was \(dqforked\(dq from 
+.Xr minitalk 1
+in late 2018, and was first publicly released 
+on github.com in early 2019.
+.Sh AUTHORS
+Initial
+.Xr minitalk 1
+program was written by
+.An Andrew Benson Aq abenson@gmail.com .
+.Pp
+.Nm Ns ,
+an
+.Xr minitalk 1
+fork with
+.Ar fifodir
+extensions, was written (extension parts) by
+.An Martin \(dqeto\(dq Mišúth Aq et.code@ethome.sk . 
+.Sh CAVEATS
+In multiuser chat scenario, users must belong into the same 
+user group, for chat system to work as intended.
+.Sh BUGS
+In the initial pulic release 
+.Ar selfpipe
+subsystem of the program was only a stub dud.
+.Sh SECURITY CONSIDERATIONS
+The primary issue here is the same as with 
+.Xr minitalk 1 Ns ,
+a security concern.
+.Pp
+Anyone that is chatting in the \(dqchatroom\(dq
+has to be able to read from, and 
+.Sy write 
+to the 
+.Pa log
+file and has to be at least able to write into each of
+.Ar fifodir Ns 's 
+fifo's (to be able to \(dqsend\(dq notifications to other \(dqclients\(dq).
+.Pp
+Anyone that has access to these \(dqcontrol\(dq files can also 
+inject anything they want into the chatroom and the chat log.
+.Pp
+More over, unless explicitly destroyed, log persists even after 
+all chat \(dqusers\(dq have \(dqdisconnected\(dq.
+.Pp
+As such, it is highly advisory to create chatrooms only in RAM 
+only filesystems (like 
+.Xr tmpfs 5 Ns ), 
+and destroy them explicitly after use.
+.Pp
+This system is truly built on top of the \(dqhonor\(dq and filesystem 
+permissions, and was designed around a single purpose: efficient 
+multi-user chat between trusted users within single, trusted, host.
+.Pp
+Don't expect this to be secure.
